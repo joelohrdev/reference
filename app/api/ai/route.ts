@@ -3,6 +3,9 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { NextResponse } from "next/server";
 import { AI_TASKS, SCHEMAS, type AiRequest, type AiResponse, type AiTask } from "@/lib/ai/schemas";
 
+/** Vision requests at medium effort can run well past a serverless default; give them room. */
+export const maxDuration = 120;
+
 const MODEL = "claude-opus-5-5";
 
 const EFFORT: Record<AiTask, "low" | "medium" | "high"> = {
