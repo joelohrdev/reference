@@ -10,12 +10,15 @@ A browser-only painting reference tool. Upload (or drop, or paste) a photo and s
 - **Color mixer** (press `C`): sample any color from the view with the eyedropper, pick from the image's dominant palette, then see how to mix it from the paints you own, or which single watercolor paints come closest. Mixing uses a single-constant Kubelka–Munk model.
 - **Library**: every image you open is kept in the browser (IndexedDB) along with its marks and settings, so a study survives a reload. Switch between images from the strip, compare two side by side, or run a pose timer that cycles through them.
 - **Export**: download the current view with overlays baked in, or a contact sheet of the value views.
+- **Studio assistant** (press `A`, needs a connection and an API key): a painting plan, perspective detection applied to the guides, a limited palette from your paints, composition crops in your canvas ratios, a value-grouping check, photo-trap warnings, tap-a-spot questions, lessons on a topic shown on your photo, and dictated session notes tidied and kept with the image. Each request sends a copy of the current image to Anthropic's API through this app's route handler, only when you tap a button.
 
 Images never leave the browser. Processing runs on a working copy no larger than 1600px on the long edge.
 
 It is also a **progressive web app**: a production build registers a service worker (`public/sw.js`) that caches the app shell and static assets, so once visited the whole tool works offline, and browsers that support it offer to install it to the home screen or dock. The manifest comes from `app/manifest.ts`; icons are in `public/` and `app/apple-icon.png`. The worker is only registered in production (`npm run build && npm start`), not under `next dev`, so development never serves stale code.
 
 ## Run it
+
+For the assistant, copy `.env.example` to `.env.local` and set `ANTHROPIC_API_KEY`. The key stays on the server; the browser calls `/api/ai`. Everything else works without it, and offline.
 
 ```bash
 npm install
@@ -38,3 +41,4 @@ Then open http://localhost:3000. Keys `1`–`6` and `8` switch views, `7` toggle
 - `lib/mixing.ts`, `lib/paints.ts`, `lib/color.ts`, `lib/palette.ts` – Kubelka–Munk mixing, the paint library, color conversions and dominant-color extraction.
 - `lib/geometry.ts` – intersections, angles, clock positions, leveling math.
 - `lib/sample-scene.ts` – a synthetic tilted street scene for trying the tools.
+- `components/studio/Assistant.tsx`, `app/api/ai/route.ts`, `lib/ai/` – the assistant panel, the server route that calls Claude with structured outputs, and the shared task schemas.

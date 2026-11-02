@@ -6,6 +6,8 @@ import { Overlay, defaultCrop } from "./Overlay";
 import { Sidebar } from "./Sidebar";
 import { ColorMixer } from "./ColorMixer";
 import { Library } from "./Library";
+import { Assistant } from "./Assistant";
+import type { AiResult } from "@/lib/ai/schemas";
 import { ValueScale } from "./ValueScale";
 import { rgbToHex, type Rgb } from "@/lib/color";
 import { useStoredValue } from "@/lib/local-store";
@@ -19,6 +21,7 @@ import {
 import { clamp, intersect, normalizeHalfTurn, rotationToVertical, segmentPx } from "@/lib/geometry";
 import { drawSampleScene } from "@/lib/sample-scene";
 import { dominantColors } from "@/lib/palette";
+import { PAINTS } from "@/lib/paints";
 import { cropImageData, exportStudy, exportValueSheet } from "@/lib/render";
 import {
   canvasToBlob,
@@ -32,7 +35,10 @@ import {
 } from "@/lib/library";
 import {
   DEFAULT_SETTINGS,
+  FRAME_RATIOS,
   VIEW_MODES,
+  type AiNote,
+  type Annotation,
   type LoadedImage,
   type Mark,
   type Pt,
@@ -64,6 +70,10 @@ export default function Studio() {
   const [notice, setNotice] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [mixerOpen, setMixerOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [askPoint, setAskPoint] = useState<Pt | null>(null);
+  const [notes, setNotes] = useState<AiNote[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [pickedColor, setPickedColor] = useState<string | null>(null);
@@ -149,9 +159,12 @@ export default function Studio() {
     };
   }, [compareId]);
 
-  const showImage = useCallback((next: LoadedImage, nextSettings: SessionSettings, nextNotice: string | null = null) => {
+  const showImage = useCallback((next: LoadedImage, nextSettings: SessionSettings, nextNotice: string | null = null, nextNotes: AiNote[] = []) => {
     setImage(next);
     setSettings(nextSettings);
+    setNotes(nextNotes);
+    setAnnotations([]);
+    setAskPoint(null);
     setLoadError(null);
     setPending(null);
     setCrop(null);
@@ -242,6 +255,8 @@ export default function Studio() {
         showImage(
           { id, name: rec.name, width: data.width, height: data.height, data, cropped: rec.cropped },
           { ...DEFAULT_SETTINGS, ...(rec.settings ?? {}) },
+          null,
+          rec.notes ?? [],
         );
         if (compareId === id) setCompareId(null);
         await updateImage(id, { openedAt: Date.now() });
@@ -370,6 +385,12 @@ export default function Studio() {
         case "c":
         case "C":
           setMixerOpen((open) => !open);
+          setAssistantOpen(false);
+          return;
+        case "a":
+        case "A":
+          setAssistantOpen((open) => !open);
+          setMixerOpen(false);
           return;
         case "f":
         case "F":
@@ -484,6 +505,53 @@ export default function Studio() {
   const handlePoint = (pt: Pt) => {
     if (tool === "eyedropper") sampleColor(pt);
     else if (tool === "plumb") addMark({ id: newId(), type: "plumb", p: pt });
+    else if (tool === "ask") {
+      setAskPoint(pt);
+      setTool("none");
+      setAssistantOpen(true);
+      setMixerOpen(false);
+    }
+  };
+
+  // ---- Assistant ----------------------------------------------------------
+
+  const saveNotes = (next: AiNote[]) => {
+    setNotes(next);
+    if (image) updateImage(image.id, { notes: next }).catch(() => {});
+  };
+
+  const applyPerspective = (r: AiResult<"perspective">, size: { width: number; height: number }) => {
+    const vps = r.vanishingPoints.map((v) => ({ x: v.x / size.width, y: v.y / size.height }));
+    setSettings((s) => {
+      const next: SessionSettings = { ...s, eyeLevel: true, horizonY: clamp(r.horizonY / size.height, 0, 1) };
+      if (r.type === "none" || vps.length === 0) return { ...next, showVps: false };
+      const xs = vps.map((v) => clamp(v.x, -0.75, 1.75));
+      if (r.type === "one" || xs.length === 1) {
+        return { ...next, showVps: true, vpMode: "one", vpXs: { ...s.vpXs, one: [xs[0]] } };
+      }
+      const pair: number[] = [xs[0], xs[1]];
+      if (r.type === "three" && vps.length >= 3) {
+        return { ...next, showVps: true, vpMode: "three", vpXs: { ...s.vpXs, three: pair }, vp3: { x: clamp(vps[2].x, -0.75, 1.75), y: clamp(vps[2].y, -2, 3) } };
+      }
+      return { ...next, showVps: true, vpMode: "two", vpXs: { ...s.vpXs, two: pair } };
+    });
+  };
+
+  const applyComposition = (opt: AiResult<"composition">["options"][number], size: { width: number; height: number }) => {
+    if (!image) return;
+    const ratio = FRAME_RATIOS.find((r) => r.id === opt.ratio) ?? FRAME_RATIOS[2];
+    const r = opt.landscape ? Math.max(ratio.w, ratio.h) / Math.min(ratio.w, ratio.h) : Math.min(ratio.w, ratio.h) / Math.max(ratio.w, ratio.h);
+    const maxFrac = Math.min(1, (image.height / image.width) * r);
+    const scale = clamp(opt.rect.w / size.width / maxFrac, 0.3, 1);
+    setSettings((s) => ({
+      ...s,
+      frame: {
+        ratio: ratio.id,
+        landscape: opt.landscape,
+        scale,
+        center: { x: clamp((opt.rect.x + opt.rect.w / 2) / size.width, 0, 1), y: clamp((opt.rect.y + opt.rect.h / 2) / size.height, 0, 1) },
+      },
+    }));
   };
 
   const lastFoundVp = useMemo(() => {
@@ -728,6 +796,8 @@ export default function Studio() {
                         pendingSegment={pending}
                         tool={tool}
                         crop={crop}
+                        annotations={annotations}
+                        askPoint={askPoint}
                         panMode={canPan && view.zoom > 1}
                         onPatch={patch}
                         onSegment={handleSegment}
@@ -830,7 +900,27 @@ export default function Studio() {
         <div
           className={`shrink-0 border-white/10 ${sidebarOpen ? "" : "hidden"} h-[42dvh] w-full border-t md:h-auto md:w-[380px] md:border-l md:border-t-0`}
         >
-          {mixerOpen ? (
+          {assistantOpen ? (
+            <Assistant
+              image={image}
+              paintNames={paintIds.map((id) => PAINT_NAMES.get(id) ?? id)}
+              dominantColors={palette}
+              askPoint={askPoint}
+              asking={tool === "ask"}
+              onStartAsk={() => selectTool(tool === "ask" ? "none" : "ask")}
+              onApplyPerspective={applyPerspective}
+              onApplyComposition={applyComposition}
+              onAnnotate={setAnnotations}
+              notes={notes}
+              onSaveNote={(n) => saveNotes([...notes, n])}
+              onDeleteNote={(at) => saveNotes(notes.filter((n) => n.at !== at))}
+              onClose={() => {
+                setAssistantOpen(false);
+                setAnnotations([]);
+                if (tool === "ask") setTool("none");
+              }}
+            />
+          ) : mixerOpen ? (
             <ColorMixer
               color={pickedColor}
               recent={recentColors}
@@ -863,6 +953,7 @@ export default function Studio() {
               cropped={!!image?.cropped}
               onRevertCrop={() => void revertCrop()}
               onOpenMixer={() => setMixerOpen(true)}
+              onOpenAssistant={() => setAssistantOpen(true)}
               onExportView={exportView}
               onExportSheet={exportSheet}
             />
@@ -891,6 +982,8 @@ function hintFor(tool: Tool, pending: Segment | null, marks: Mark[]): string | n
       return "Click a point to drop vertical and horizontal lines through it.";
     case "eyedropper":
       return "Click anywhere on the image to sample its color.";
+    case "ask":
+      return "Tap the spot you want to ask about.";
     default:
       return null;
   }
@@ -970,6 +1063,8 @@ function EmptyState({
     </div>
   );
 }
+
+const PAINT_NAMES = new Map(PAINTS.map((p) => [p.id, p.name]));
 
 function parseIds(json: string): string[] {
   try {

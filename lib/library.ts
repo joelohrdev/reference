@@ -2,7 +2,7 @@
  * The image library: working-size copies of every photo opened, with the
  * study settings for each, kept in IndexedDB so a session survives a reload.
  */
-import type { SessionSettings } from "./types";
+import type { AiNote, SessionSettings } from "./types";
 
 const DB_NAME = "reference-studio";
 const STORE = "images";
@@ -23,6 +23,7 @@ export interface StoredImage {
   addedAt: number;
   openedAt: number;
   settings: SessionSettings | null;
+  notes?: AiNote[];
 }
 
 export type LibraryItem = Omit<StoredImage, "blob" | "original">;

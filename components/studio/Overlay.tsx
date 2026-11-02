@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
-import { FRAME_RATIOS, type Mark, type Pt, type Rect, type Segment, type SessionSettings, type Tool } from "@/lib/types";
+import { FRAME_RATIOS, type Annotation, type Mark, type Pt, type Rect, type Segment, type SessionSettings, type Tool } from "@/lib/types";
 import { angleFromHorizontal, clamp, clockPosition, length, segmentPx, toPx } from "@/lib/geometry";
 
 interface Props {
@@ -12,6 +12,8 @@ interface Props {
   pendingSegment: Segment | null;
   tool: Tool;
   crop: Rect | null;
+  annotations: Annotation[];
+  askPoint: Pt | null;
   /** Space is held: the stage pans, the overlay stays out of the way. */
   panMode: boolean;
   onPatch: (patch: Partial<SessionSettings>) => void;
@@ -29,6 +31,7 @@ const COLORS = {
   angle: "#7cf0a0",
   prop: "#ff8c69",
   plumb: "#d9a4ff",
+  ai: "#ff6ad5",
   drag: "#ffffff",
   frame: "#ffffff",
   crop: "#f5c542",
@@ -68,6 +71,8 @@ export function Overlay({
   pendingSegment,
   tool,
   crop,
+  annotations,
+  askPoint,
   panMode,
   onPatch,
   onSegment,
@@ -104,7 +109,7 @@ export function Overlay({
   const interactive = tool !== "none" && !panMode;
 
   const onPointerDown = (e: ReactPointerEvent) => {
-    if (e.button !== 0 || !interactive || tool === "eyedropper" || tool === "plumb") return;
+    if (e.button !== 0 || !interactive || tool === "eyedropper" || tool === "plumb" || tool === "ask") return;
     const p = toPt(e);
     capture(e);
     setDrag({ start: p, cur: p });
@@ -155,7 +160,7 @@ export function Overlay({
       setHandleDrag(null);
       return;
     }
-    if ((tool === "eyedropper" || tool === "plumb") && interactive && e.button === 0) {
+    if ((tool === "eyedropper" || tool === "plumb" || tool === "ask") && interactive && e.button === 0) {
       onPoint(toPt(e));
       return;
     }
@@ -256,6 +261,34 @@ export function Overlay({
         {marks.map((m) => (
           <MarkView key={m.id} mark={mirrorMark(m, flip)} width={width} height={height} unitLength={unitLength} />
         ))}
+
+        {annotations.map((a) => {
+          const p = toPx(mp({ x: a.x, y: a.y }), width, height);
+          if (a.w !== undefined && a.h !== undefined) {
+            const r = toPxRect(mr({ x: a.x, y: a.y, w: a.w, h: a.h }), width, height);
+            return (
+              <g key={a.id}>
+                <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="rgba(255,106,213,0.08)" stroke={COLORS.ai} strokeWidth={1.5} strokeDasharray="6 4" />
+                <Label x={r.x + 6} y={r.y + 15} text={a.label} color={COLORS.ai} />
+              </g>
+            );
+          }
+          return (
+            <g key={a.id}>
+              <circle cx={p.x} cy={p.y} r={9} fill="none" stroke={COLORS.ai} strokeWidth={2} />
+              <circle cx={p.x} cy={p.y} r={2.5} fill={COLORS.ai} />
+              <Label x={p.x + 12} y={p.y - 10} text={a.label} color={COLORS.ai} />
+            </g>
+          );
+        })}
+
+        {askPoint && (
+          <g>
+            <circle cx={mx(askPoint.x) * width} cy={askPoint.y * height} r={10} fill="none" stroke={COLORS.ai} strokeWidth={2} />
+            <circle cx={mx(askPoint.x) * width} cy={askPoint.y * height} r={3} fill={COLORS.ai} />
+            <Label x={mx(askPoint.x) * width + 13} y={askPoint.y * height - 11} text="Asking about this" color={COLORS.ai} />
+          </g>
+        )}
 
         {pendingSegment && (
           <SegmentView s={segmentPx(ms(pendingSegment), width, height)} color={COLORS.found} label="edge 1" />

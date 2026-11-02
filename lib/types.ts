@@ -10,7 +10,25 @@ export const VIEW_MODES: { id: ViewMode; label: string; key: string }[] = [
   { id: "temperature", label: "Warm / cool", key: "8" },
 ];
 
-export type Tool = "none" | "level" | "findVp" | "angle" | "proportion" | "plumb" | "eyedropper" | "crop";
+export type Tool = "none" | "level" | "findVp" | "angle" | "proportion" | "plumb" | "eyedropper" | "crop" | "ask";
+
+/** A labelled spot or region the assistant points at, in normalized coordinates. */
+export interface Annotation {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+}
+
+/** A tidied session note, kept with the image. */
+export interface AiNote {
+  title: string;
+  note: string;
+  nextTime: string[];
+  at: number;
+}
 
 export type PerspectiveMode = "one" | "two" | "three";
 

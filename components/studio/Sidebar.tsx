@@ -22,6 +22,7 @@ export interface SidebarProps {
   cropped: boolean;
   onRevertCrop: () => void;
   onOpenMixer: () => void;
+  onOpenAssistant: () => void;
   onExportView: () => void;
   onExportSheet: () => void;
 }
@@ -255,6 +256,13 @@ export function Sidebar(p: SidebarProps) {
         <Btn onClick={p.onOpenMixer}>
           Color mixer
           <span className="text-neutral-400"> (C): pick a color, see how to mix it</span>
+        </Btn>
+      </Section>
+
+      <Section title="Assistant">
+        <Btn onClick={p.onOpenAssistant}>
+          Studio assistant
+          <span className="text-neutral-400"> (A): plan, perspective, palette, lessons</span>
         </Btn>
       </Section>
 
